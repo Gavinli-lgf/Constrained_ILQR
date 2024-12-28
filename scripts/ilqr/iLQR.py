@@ -11,6 +11,9 @@ from ilqr.constraints import Constraints
 
 
 class iLQR():
+    """
+    args : arguments.py中定义的参数; obstacle_bb : 障碍物的bounding box(其实是一个长宽数组); 
+    """
     def __init__(self, args, obstacle_bb, verbose=False):
         self.args = args
         self.Ts = args.timestep
@@ -20,13 +23,13 @@ class iLQR():
         self.verbose = verbose
         
         self.global_plan = None
-        self.local_planner = LocalPlanner(args)
+        self.local_planner = LocalPlanner(args) # 局部规划对象:根据自车位置，从自车参考轨迹上取20个点，并拟合满足5次多项式
         self.vehicle_model = Model(args)
         self.constraints = Constraints(args, obstacle_bb)
         
         # initial nominal trajectory
-        self.control_seq = np.zeros((self.args.num_ctrls, self.args.horizon))
-        self.control_seq[0, :] = np.ones((self.args.horizon)) * 0.5
+        self.control_seq = np.zeros((self.args.num_ctrls, self.args.horizon)) # 大小(2, 40)
+        self.control_seq[0, :] = np.ones((self.args.horizon)) * 0.5 # 默认控制序列中的初始加速度都是0.5
         self.debug_flag = 0
 
         self.lamb_factor = 10
@@ -35,6 +38,9 @@ class iLQR():
         # self.fig, (self.ax1, self.ax2, self.ax3) = plt.subplots(1,3, num=0, figsize=(20, 5))
 
     
+    """
+    global_plan:自车参考轨迹的位置(x,desired_y)的list, 转换为array大小为(map_lengthx+20, 2)
+    """
     def set_global_plan(self, global_plan):
         self.global_plan = global_plan
         self.local_planner.set_global_planner(self.global_plan)
@@ -92,12 +98,18 @@ class iLQR():
         return k, K
 
 
+    """
+    输入: ego_state:自车当前状态,大小(5,3); npc_traj:npc在控制域horizon内的运行状态[:, i:i+self.args.horizon](默认horizon=40)
+    输出: desired_path, local_plan, control
+    """
     def run_step(self, ego_state, npc_traj):
         assert self.global_plan is not None, "Set a global plan in iLQR before starting run_step"
 
+        # 计算拟合后的局部参考路径 ref_traj (2, 20)和拟合多项式的系数 poly_coeff
         self.local_planner.set_ego_state(ego_state)
         ref_traj, poly_coeff = self.local_planner.get_local_plan()
 
+        # X_0:自车当前状态 (x, y, v, yaw)
         X_0 = np.array([ego_state[0][0], ego_state[0][1], ego_state[1][0], ego_state[2][2]])
 
         # self.control_seq[:, :-1] = self.control_seq[:, 1:]
@@ -110,6 +122,12 @@ class iLQR():
         # self.plot(U, X, ref_traj)
         return traj, ref_traj, U #self.filter_control(U,  X[2,:])
 
+    """
+    输入: X_0:自车当前状态 (x, y, v, yaw); U:控制序列(2, 40),默认初始a都为0.5; poly_coeff:局部规划拟合多项式的系数; 
+         x_local_plan:局部参考路径的x坐标; npc_traj:npc在控制域horizon内的运行状态[:, i:i+self.args.horizon](默认horizon=40)
+    输出: X, U
+    功能: 
+    """
     def get_optimal_control_seq(self, X_0, U, poly_coeff, x_local_plan, npc_traj):
         X = self.get_nominal_trajectory(X_0, U)
         J_old = sys.float_info.max

@@ -35,6 +35,11 @@ colors = ['r', 'g', 'b', 'k']
 
 class PySimulator:
 
+    """
+    初始化仿真器，设置仿真参数、车辆状态和绘图参数。
+    创建 iLQR 控制器，并模拟 NPC 车辆的状态。
+    初始化车辆的图形表示，并将其添加到绘图中。
+    """
     def __init__(self, args, SimParams, NPC_start, NPC_control):
         self.args = args
         # num_vehicles is only 2 for now
@@ -43,8 +48,8 @@ class PySimulator:
 
         self.simparams = SimParams
         self.num_vehicles = self.simparams.num_vehicles
-        self.navigation_agent = None
-        self.current_ego_state = self.simparams.start_state
+        self.navigation_agent = None    # iLQR控制器对象
+        self.current_ego_state = self.simparams.start_state # 记录自车的当前状态
         # self.last_ego_states = [self.simparams.start_state[0:2]]
         self.last_ego_states = np.array([self.simparams.start_state[0], self.simparams.start_state[1]])
 
@@ -72,7 +77,7 @@ class PySimulator:
         self.line_plots = list(trajs)
 
         self.create_ilqr_agent()
-        self.NPC_states = []
+        self.NPC_states = []    # 存储非玩家角色(NPC)车辆的状态
         self.simulate_npc(NPC_start, NPC_control)
         self.count = 0
 
@@ -88,18 +93,29 @@ class PySimulator:
 
         self.all_patches = self.patches + self.line_plots
 
+
+    """
+    模拟 NPC 车辆在初始状态 init_state 下，经过输入序列 control 后的状态变化，并将其存储在 NPC_states 中。
+    """
     def simulate_npc(self, init_state, control):
         self.NPC_states.append(init_state)
+        # 将控制输入矩阵 control 扩展，添加零值列以匹配仿真时间步长 self.args.horizon(默认40)
         control = np.hstack((control, np.zeros((2, self.args.horizon))))
+        # 遍历控制输入矩阵的每一列（每个时间步的控制输入）。
         for i in range(control.shape[1]):
+            # 调用 run_model_simulation 方法，给定当前状态和控制输入，计算下一个状态 NPC_next_state。
             NPC_next_state = self.run_model_simulation(self.NPC_states[i], control[:, i])
+            # 将计算得到的下一个状态 NPC_next_state 添加到 NPC_states 列表中。
             self.NPC_states.append(NPC_next_state)
-        self.NPC_states = np.array(self.NPC_states).T
+        self.NPC_states = np.array(self.NPC_states).T   # 从141*4，转置为4*141(注：list没有shape，单array有)
         
 
+    """
+    自车参考轨迹的位置(x,y)数组，大小(2 * map_lengthx+20)，并在绘图中显示。
+    """
     def create_global_plan(self):
         y = self.simparams.desired_y
-        self.plan_ilqr = []
+        self.plan_ilqr = [] # 自车参考轨迹的位置(x,desired_y)数组，大小(2 * map_lengthx+20)
         for i in range(0, self.simparams.map_lengthx+20):
             self.plan_ilqr.append(np.array([i, y]))
         self.plan_ilqr = np.array(self.plan_ilqr)
@@ -110,6 +126,7 @@ class PySimulator:
     def init_sim(self): #C4
         return self.all_patches
 
+    # 将自车当前状态转换为如下"5*3"的array：[[x, y, 0], [v, 0, 0], [0, 0, theta], [0, 0, 0], [0, 0, 0]]
     def get_ego_states(self):
         ego_states = np.array([[self.current_ego_state[0], self.current_ego_state[1],                         0],
                                [self.current_ego_state[2],                         0,                         0],
@@ -118,20 +135,27 @@ class PySimulator:
                                [                        0,                         0,                         0]])
         return ego_states
 
+    # 返回NPC车辆的长宽array,[4, 2]
     def get_npc_bounding_box(self):
         return self.simparams.car_dims
 
+    # 返回NPC车辆的状态，从第i个时间步开始的self.args.horizon个时间步
     def get_npc_states(self, i):
         return self.NPC_states[:, i:i+self.args.horizon]
 
+    # 创建 iLQR 控制器对象，并设置自车参考轨迹self.plan_ilqr。
     def create_ilqr_agent(self):
-        self.create_global_plan()
+        self.create_global_plan()   # 生成自车参考轨迹的位置(x,desired_y)数组，大小(2 * map_lengthx+20)，self.plan_ilqr
         self.navigation_agent = iLQR(self.args, self.get_npc_bounding_box())
         self.navigation_agent.set_global_plan(self.plan_ilqr)
 
+    """
+    运行 iLQR 控制器的一个时间步，并返回期望路径、本地路径和控制输入。
+    """
     def run_step_ilqr(self):
         assert self.navigation_agent != None, "Navigation Agent not initialized"
         
+        # 使用 time.process_time() 记录运行一次run_step需要的时间。
         start = time.process_time()
         desired_path, local_plan, control = self.navigation_agent.run_step(self.get_ego_states(), self.get_npc_states(self.count))
         print(time.process_time() - start)
@@ -181,6 +205,7 @@ class PySimulator:
                                repeat=False)
         plt.show()
 
+    # 给定当前状态state和控制输入control，计算并返回下一个状态next_state
     def run_model_simulation(self, state, control):
         """
         Find the next state of the vehicle given the current state and control input
@@ -198,39 +223,46 @@ class PySimulator:
 
         return next_state
 
+"""
+SimParams:定义仿真中用到的地图、车辆基本参数信息
+"""
 class SimParams:
-    dt = 0.1
-    sim_time = 100
-    map_lengthx = 50
-    map_lengthy = 6
-    lane1 = 5
+    dt = 0.1            #
+    sim_time = 100      # 仿真总时间，设置为 100 个时间步，即 10 秒。
+    map_lengthx = 50    # 地图的纵向长度s，设置为 50 米
+    map_lengthy = 6     # 地图单边宽度l为6m(两侧共12m)
+    lane1 = 5           # 单车道lane宽度为5m
     lane2 = 0
     lane3 = -5
-    num_vehicles = 2
+    num_vehicles = 2    # 仿真车数量2(包括自车)
 
     ## Car Parameters
-    car_dims = np.array([4, 2])
-    start_state = np.array([5, 0, 0, 0])
-    max_speed = 180/3.6
+    car_dims = np.array([4, 2])             # ego车长4m，宽2m
+    start_state = np.array([5, 0, 0, 0])    # ego的初始状态x0
+    max_speed = 180/3.6                     # ego最大车速(m/s)
     wheelbase = 2.94
-    steer_min = -1.0
+    steer_min = -1.0    # 方向盘的最小和最大转角，分别设置为 -1.0 和 1.0。
     steer_max = 1.0
-    accel_min = -5.5
+    accel_min = -5.5    # 加速度的最小和最大值，分别设置为 -5.5 和 3.0
     accel_max = 3.0
-    desired_y = 2.5
-    NPC_max_acc = 0.75
+    desired_y = 2.5      # ego期望的横向位置2.5m（纵向位置是0~50）
+    NPC_max_acc = 0.75   # NPC 车辆的最大加速度，设置为 0.75
 
 
 
 
 if __name__ == "__main__":
+    # 解析命令行参数,并将参数存储在args中
     argparser = argparse.ArgumentParser(description='CARLA CILQR')
-    add_arguments(argparser)
+    add_arguments(argparser)    # 在arguments.py中定义的参数
     args = argparser.parse_args()
 
-    NPC_start = np.array([10, 2.5, 0, 0])
+    NPC_start = np.array([10, 2.5, 0, 0])   #obs的初始状态(x,y,v,theta)=(10, 2.5, 0, 0)
+    # 存储NPC车辆的控制输入,大小"2*sim_time",第一行是加速度acc，第二行是横摆角速度yawrate；
     NPC_ctrl = np.zeros((2, SimParams.sim_time))
+    # acc从NPC_max_acc(0.75)分sim_time(100)个时间步递减到0;yawrate全为0.
     NPC_ctrl[0,:] = np.linspace(SimParams.NPC_max_acc, 0, SimParams.sim_time)
     num_vehicles = 2
+    # 创建仿真器pysim，并传入预定义参数
     pysim = PySimulator(args, SimParams, NPC_start, NPC_ctrl)
     pysim.run_simulation()
