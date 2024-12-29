@@ -24,14 +24,16 @@ class Model:
         self.z = np.zeros((self.N))
         self.o = np.ones((self.N))
         
+    # 使用车辆运动学方程，根据当前状态 state 和控制输入 control ，计算下一个状态 next_state
     def forward_simulate(self, state, control):
         """
         Find the next state of the vehicle given the current state and control input
         """
-        # Clips the controller values between min and max accel and steer values
+        # Clips the controller values between min and max accel and steer values(对输入进行限幅)
         control[0] = np.clip(control[0], self.accel_min, self.accel_max)
         control[1] = np.clip(control[1], state[2]*tan(self.steer_min)/self.wheelbase, state[2]*tan(self.steer_max)/self.wheelbase)
         
+        # 使用车辆运动学方程，由当前状态和控制输入计算下一个状态(应该先对v限幅，再计算x,y)
         next_state = np.array([state[0] + cos(state[3])*(state[2]*self.Ts + (control[0]*self.Ts**2)/2),
                                state[1] + sin(state[3])*(state[2]*self.Ts + (control[0]*self.Ts**2)/2),
                                np.clip(state[2] + control[0]*self.Ts, 0.0, self.max_speed),

@@ -23,6 +23,7 @@ class Constraints:
 		for i in range(self.number_of_npc):
 			self.obs_constraints[i] = Obstacle(args, i, obstacle_bb)
 
+	# TODO(lgf):待推导
 	def get_state_cost_derivatives(self, state, poly_coeffs, x_local_plan, npc_traj):
 		"""
 		Returns the first order and second order derivative of the value function wrt state
@@ -61,6 +62,7 @@ class Constraints:
 		# pdb.set_trace()
 		return l_x, l_xx
 
+	# TODO(lgf):待推导
 	def get_control_cost_derivatives(self, state, control):
 		"""
 		Returns the control quadratic (R matrix) and linear cost term (r vector) for the trajectory
@@ -108,6 +110,11 @@ class Constraints:
 
 		return b, b_dot, b_ddot
 
+	"""
+	输入:state:自车nominal trajectory(不包含初始状态),大小(4,40);  control:自车的nominal输入(2,40); (horizon=40)
+        poly_coeffs:局部规划拟合多项式的系数;  x_local_plan:局部参考路径的x坐标;  npc_traj:npc在控制域horizon内的状态[:, i:i+self.args.horizon];
+    输出: l_x, l_xx, l_u, l_uu, l_ux: 代价函数l对x, u的一阶和二阶偏导
+	"""
 	def get_cost_derivatives(self, state, control, poly_coeffs, x_local_plan, npc_traj):
 		"""
 		Returns the different cost terms for the trajectory

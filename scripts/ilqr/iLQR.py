@@ -27,7 +27,7 @@ class iLQR():
         self.vehicle_model = Model(args)
         self.constraints = Constraints(args, obstacle_bb)
         
-        # initial nominal trajectory
+        # initial nominal trajectory(初始化 self.control_seq 大小(2, 40)，首行都为的0.5数组)
         self.control_seq = np.zeros((self.args.num_ctrls, self.args.horizon)) # 大小(2, 40)
         self.control_seq[0, :] = np.ones((self.args.horizon)) * 0.5 # 默认控制序列中的初始加速度都是0.5
         self.debug_flag = 0
@@ -45,13 +45,24 @@ class iLQR():
         self.global_plan = global_plan
         self.local_planner.set_global_planner(self.global_plan)
 
+    """
+    输入: X_0:自车当前状态 (x, y, v, yaw);  U:控制序列(2, 40),默认初始a都为0.5;
+    输出: X: 车辆运动学方程在初始状态下, 通过控制序列U, 得到车辆的状态序列(4, 41)
+    """
     def get_nominal_trajectory(self, X_0, U):
+        # 初始化X为(4, 41)大小的zero数组，X[:, 0]为自车当前状态
         X = np.zeros((self.args.num_states, self.args.horizon+1))
         X[:, 0] = X_0
         for i in range(self.args.horizon):
+            # 使用车辆运动学方程，根据当前状态和控制输入，计算下一个状态
             X[:, i+1] = self.vehicle_model.forward_simulate(X[:, i], U[:, i])
         return X
 
+    """
+    输入: X:自车在 X_0 初始状态下,以nominal输入 U 获得的 nominal trajectory(4,41);  U:自车的nominal输入(2,40); (horizon=40)
+        k:前馈序列(2,4,40);  K:反馈增益序列(2,40)
+    输出: X_new, U_new: 通过前向滚动再次获取控制点处的控制值和新状态
+    """
     def forward_pass(self, X, U, k, K):
         X_new = np.zeros((self.args.num_states, self.args.horizon+1))
         X_new[:, 0] = X[:, 0]
@@ -62,19 +73,27 @@ class iLQR():
             X_new[:, i+1] = self.vehicle_model.forward_simulate(X_new[:, i], U_new[:, i])
         return X_new, U_new
 
+    """
+    输入:X:自车在 X_0 初始状态下,以nominal输入 U 获得的 nominal trajectory(4,41);  U:自车的nominal输入(2,40); (horizon=40)
+        poly_coeff:局部规划拟合多项式的系数;  x_local_plan:局部参考路径的x坐标;  npc_traj:npc在控制域horizon内的状态[:, i:i+self.args.horizon];
+        lamb:Regularization parameter;
+    输出: k, K: 通过backward pass计算得到的最优控的反馈增益序列 K(2,40) ,前馈序列k(2,4,40)
+    """
     def backward_pass(self, X, U, poly_coeff, x_local_plan, npc_traj, lamb):
         # Find control sequence that minimizes Q-value function
-        # Get derivatives of Q-function wrt to state and control
+        # Get derivatives of Q-function wrt to state and control(代价函数l对x, u的一阶和二阶偏导.即l对horizon内的每个状态和控制量都求了偏导数)
+        # TODO(lgf):从下面推理得各个array的大小:l_x (4, 40), l_xx (4, 4, 40), l_u (2, 40), l_uu (2, 2, 40), l_ux (2, 4, 40)
         l_x, l_xx, l_u, l_uu, l_ux = self.constraints.get_cost_derivatives(X[:, 1:], U, poly_coeff, x_local_plan, npc_traj) 
+        # 系统状态转移方程f对x,y的一阶偏导
         df_dx = self.vehicle_model.get_A_matrix(X[2, 1:], X[3, 1:], U[0,:])
         df_du = self.vehicle_model.get_B_matrix(X[3, 1:])
-        # Value function at final timestep is known
+        # Value function at final timestep is known(初始化值函数 V_x 和 V_xx 为代价函数l在最后一个时间步的导数)
         V_x = l_x[:,-1] 
         V_xx = l_xx[:,:,-1]
-        # Allocate space for feedforward and feeback term
+        # Allocate space for feedforward and feeback term(分配前馈和反馈项的空间k:(2, 40), K:(2, 4, 40))
         k = np.zeros((self.args.num_ctrls, self.args.horizon))
         K = np.zeros((self.args.num_ctrls, self.args.num_states, self.args.horizon))
-        # Run a backwards pass from N-1 control step
+        # Run a backwards pass from N-1 control step(从最后一个控制步开始，进行反向传播计算)
         for i in range(self.args.horizon-1,-1,-1):
             Q_x = l_x[:,i] + df_dx[:,:,i].T @ V_x
             Q_u = l_u[:,i] + df_du[:,:,i].T @ V_x
@@ -88,10 +107,10 @@ class iLQR():
             Q_uu_inv = np.dot(Q_uu_evecs,np.dot(np.diag(1.0/Q_uu_evals), Q_uu_evecs.T))
 
     
-            # Calculate feedforward and feedback terms
+            # Calculate feedforward and feedback terms(计算前馈项 k 和反馈项 K)
             k[:,i] = -Q_uu_inv @ Q_u
             K[:,:,i] = -Q_uu_inv @ Q_ux
-            # Update value function for next time step
+            # Update value function for next time step(更新下一个时间步的价值函数 V_x 和 V_xx)
             V_x = Q_x - K[:,:,i].T @ Q_uu @ k[:,i]
             V_xx = Q_xx - K[:,:,i].T @ Q_uu @ K[:,:,i]
         
@@ -123,19 +142,23 @@ class iLQR():
         return traj, ref_traj, U #self.filter_control(U,  X[2,:])
 
     """
-    输入: X_0:自车当前状态 (x, y, v, yaw); U:控制序列(2, 40),默认初始a都为0.5; poly_coeff:局部规划拟合多项式的系数; 
-         x_local_plan:局部参考路径的x坐标; npc_traj:npc在控制域horizon内的运行状态[:, i:i+self.args.horizon](默认horizon=40)
+    输入: X_0:自车当前状态 (x, y, v, yaw);  U:控制序列(2, 40),默认初始a都为0.5;  poly_coeff:局部规划拟合多项式的系数; 
+         x_local_plan:局部参考路径的x坐标;  npc_traj:npc在控制域horizon内的状态[:, i:i+self.args.horizon](默认horizon=40)
     输出: X, U
     功能: 
     """
     def get_optimal_control_seq(self, X_0, U, poly_coeff, x_local_plan, npc_traj):
+        # 使用车辆运动学在初始状态 X_0 下, 通过控制序列 U (加速度0.5), 得到车辆的状态序列 X:(4, 41)
         X = self.get_nominal_trajectory(X_0, U)
-        J_old = sys.float_info.max
+        J_old = sys.float_info.max  # Initialize cost to a float largest value
         lamb = 1 # Regularization parameter
-        # Run iLQR for max iterations
+
+        # Run iLQR for max iterations(max_iters:20)
         for itr in range(self.args.max_iters):
+            # k, K: 通过backward pass计算得到的最优控的反馈增益序列 K(2,40) ,前馈序列k(2,4,40)
             k, K = self.backward_pass(X, U, poly_coeff, x_local_plan, npc_traj, lamb)
             # Get control values at control points and new states again by a forward rollout
+            # 通过前向滚动再次获取控制点处的控制值和新状态
             X_new, U_new = self.forward_pass(X, U, k, K)
             J_new = self.constraints.get_total_cost(X, U, poly_coeff, x_local_plan, npc_traj)
             
