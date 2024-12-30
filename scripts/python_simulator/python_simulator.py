@@ -51,7 +51,7 @@ class PySimulator:
         self.navigation_agent = None    # iLQR控制器对象
         self.current_ego_state = self.simparams.start_state # 记录自车的当前状态
         # self.last_ego_states = [self.simparams.start_state[0:2]]
-        self.last_ego_states = np.array([self.simparams.start_state[0], self.simparams.start_state[1]])
+        self.last_ego_states = np.array([self.simparams.start_state[0], self.simparams.start_state[1]]) # 记录自车的历史轨迹
 
         # Plot parameters
         self.fig = plt.figure(figsize=(25, 5))
@@ -150,13 +150,16 @@ class PySimulator:
         self.navigation_agent.set_global_plan(self.plan_ilqr)
 
     """
-    运行 iLQR 控制器的一个时间步，并返回期望路径、本地路径和控制输入。
+    功能:运行 iLQR 控制器的一个时间步，并返回期望路径、局部参考轨迹和控制输入。
+    输出:desired_path(11,2):cilqr求得horizon内最优(x,y)序列; local_plan(20, 2):拟合后的局部参考路径; control[:, 0]:cilqr求得最优控制序列的第0个控制量;
     """
     def run_step_ilqr(self):
         assert self.navigation_agent != None, "Navigation Agent not initialized"
         
         # 使用 time.process_time() 记录运行一次run_step需要的时间。
         start = time.process_time()
+        # 输入:自车当前状态和NPC在horizon内车辆状态
+        # 输出:desired_path(11,2):cilqr求得horizon内最优(x,y)序列; local_plan(20, 2):拟合后的局部参考路径; control(2, 40):cilqr求得horizon内最优控制序列;
         desired_path, local_plan, control = self.navigation_agent.run_step(self.get_ego_states(), self.get_npc_states(self.count))
         print(time.process_time() - start)
         
@@ -165,30 +168,36 @@ class PySimulator:
 
         return desired_path, local_plan, control[:, 0]
  
+    """
+    功能: 更新仿真动画中3种内容:自车的历史轨迹 last_ego_states,NPC与拟合后的局部参考轨迹 local_plan, ilqr求得的最优轨迹 desired_path
+    """
     def animate(self, i):
         # Get new ego patch
+        # desired_path(11,2):cilqr求得horizon内最优(x,y)序列; local_plan(20, 2):拟合后的局部参考路径; control:ilqr求得最优控制序列的第0个控制量;
         desired_path, local_plan, control = self.run_step_ilqr()
         self.current_ego_state = self.run_model_simulation(self.current_ego_state, control)
 
+        # 记录自车形式的历史轨迹
         self.last_ego_states = np.vstack((self.last_ego_states, self.current_ego_state[0:2]))
         
+        # 更新自车的图形表示与顶点坐标
         self.NPC_dict[0].createCuboid([self.current_ego_state[0], self.current_ego_state[1], self.current_ego_state[3]]) # Update ego vehicle patch
         self.patches[0].set_xy(self.NPC_dict[0].getCorners()) # Update ego vehicle patch
 
-        # Get new NPC patch
+        # Get new NPC patch 遍历所有NPC车辆，更新其图形表示与顶点坐标
         # pdb.set_trace()
         for j in range(1,self.num_vehicles):
             self.NPC_dict[j].createCuboid([self.NPC_states[0, i], self.NPC_states[1, i], self.NPC_states[3, i]])
             self.patches[j].set_xy(self.NPC_dict[j].getCorners())
 
-        # Get local plan
+        # Get local plan 画拟合后的局部参考路径
         self.x_local_plan = local_plan[:, 0]
         self.y_local_plan = local_plan[:, 1]
         self.local_plan_plot.set_data(self.x_local_plan, self.y_local_plan)
         
         self.last_states_plots.set_data(self.last_ego_states[:, 0],self.last_ego_states[:, 1])
 
-        #Get desired plan
+        #Get desired plan 画cilqr求得horizon内最优(x,y)序列
         self.x_desired_plan = desired_path[:, 0]
         self.y_desired_plan = desired_path[:, 1]
         self.desired_plan_plot.set_data(self.x_desired_plan, self.y_desired_plan)

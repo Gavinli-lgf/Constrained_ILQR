@@ -61,15 +61,16 @@ class iLQR():
     """
     输入: X:自车在 X_0 初始状态下,以nominal输入 U 获得的 nominal trajectory(4,41);  U:自车的nominal输入(2,40); (horizon=40)
         k:前馈序列(2,4,40);  K:反馈增益序列(2,40)
-    输出: X_new, U_new: 通过前向滚动再次获取控制点处的控制值和新状态
+    输出: X_new, U_new: 通过前向滚动再次获取控制点处的新控制值 U_new(2,40) 和新状态 X_new(4,41)
     """
     def forward_pass(self, X, U, k, K):
         X_new = np.zeros((self.args.num_states, self.args.horizon+1))
-        X_new[:, 0] = X[:, 0]
+        X_new[:, 0] = X[:, 0] # 初始状态不变
         U_new = np.zeros((self.args.num_ctrls, self.args.horizon))
         # Do a forward rollout and get states at all control points
         for i in range(self.args.horizon):
             U_new[:, i] = U[:, i] + k[:, i] + K[:, :, i] @ (X_new[:, i] - X[:, i])
+            # 使用车辆运动学方程，根据当前状态和控制输入，计算下一个状态
             X_new[:, i+1] = self.vehicle_model.forward_simulate(X_new[:, i], U_new[:, i])
         return X_new, U_new
 
@@ -119,7 +120,8 @@ class iLQR():
 
     """
     输入: ego_state:自车当前状态,大小(5,3); npc_traj:npc在控制域horizon内的运行状态[:, i:i+self.args.horizon](默认horizon=40)
-    输出: desired_path, local_plan, control
+    输出: traj(11,2):cilqr得到的horizon内的(x,y)轨迹;  ref_traj(2, 20):拟合后的局部参考路径;  
+          U(2, 40):cilqr得到的horizon内的最优控制序列;
     """
     def run_step(self, ego_state, npc_traj):
         assert self.global_plan is not None, "Set a global plan in iLQR before starting run_step"
@@ -134,18 +136,19 @@ class iLQR():
         # self.control_seq[:, :-1] = self.control_seq[:, 1:]
         # self.control_seq[:, -1] = np.zeros((self.args.num_ctrls))
 
+        # X(4, 41), U(2, 40): 通过iLQR算法得到的 horizon 范围内的最优状态,控制序列
         X, U = self.get_optimal_control_seq(X_0, self.control_seq, poly_coeff, ref_traj[:, 0], npc_traj)
-        traj = X[:2, ::int(self.args.horizon/10)].T
+        # 对X序列提取前2个维度(x,y)坐标,并按horizon/10即4的间隔采样，生成traj(11,2)
+        traj = X[:2, ::int(self.args.horizon/10)].T 
 
         self.control_seq = U
         # self.plot(U, X, ref_traj)
         return traj, ref_traj, U #self.filter_control(U,  X[2,:])
 
     """
-    输入: X_0:自车当前状态 (x, y, v, yaw);  U:控制序列(2, 40),默认初始a都为0.5;  poly_coeff:局部规划拟合多项式的系数; 
-         x_local_plan:局部参考路径的x坐标;  npc_traj:npc在控制域horizon内的状态[:, i:i+self.args.horizon](默认horizon=40)
-    输出: X, U
-    功能: 
+    输入: X_0:自车当前状态 (x, y, v, yaw);  U:控制序列(2, 40),默认初始a都为0.5;  poly_coeff:局部参考轨迹拟合多项式的系数; 
+         x_local_plan:局部参考轨迹的x坐标;  npc_traj:npc在控制域horizon内的状态[:, i:i+self.args.horizon](默认horizon=40)
+    输出: X(4, 41), U(2, 40): 通过iLQR算法得到的 horizon 范围内的最优状态,控制序列
     """
     def get_optimal_control_seq(self, X_0, U, poly_coeff, x_local_plan, npc_traj):
         # 使用车辆运动学在初始状态 X_0 下, 通过控制序列 U (加速度0.5), 得到车辆的状态序列 X:(4, 41)
@@ -158,8 +161,9 @@ class iLQR():
             # k, K: 通过backward pass计算得到的最优控的反馈增益序列 K(2,40) ,前馈序列k(2,4,40)
             k, K = self.backward_pass(X, U, poly_coeff, x_local_plan, npc_traj, lamb)
             # Get control values at control points and new states again by a forward rollout
-            # 通过前向滚动再次获取控制点处的控制值和新状态
+            # 通过前向滚动再次获取控制点处的新控制值 U_new(2,40) 和新状态值 X_new(4,41)
             X_new, U_new = self.forward_pass(X, U, k, K)
+            # J(标量):X 和 U 与局部参考轨迹(poly_coeff,x_local_plan)的代价. (npc_traj未使用)
             J_new = self.constraints.get_total_cost(X, U, poly_coeff, x_local_plan, npc_traj)
             
             if J_new < J_old:

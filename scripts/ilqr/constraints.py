@@ -129,6 +129,11 @@ class Constraints:
 
 		return l_x, l_xx, l_u, l_uu, l_ux
 
+	"""
+	输入: state(4,41):forward推导horizon范围内状态序列;  control_seq(2,40):forward推导horizon范围内控制序列;  poly_coeffs:局部参考轨迹拟合多项式的系数; 
+         x_local_plan:局部参考轨迹的x坐标;  npc_traj:npc在控制域horizon内的状态[:, i:i+self.args.horizon](默认horizon=40)
+    输出: J(标量):state 和 control_seq 与局部参考轨迹(poly_coeffs,x_local_plan)的代价.
+    """
 	def get_total_cost(self, state, control_seq, poly_coeffs, x_local_plan, npc_traj):
 		"""
 		Returns cost of a sequence
