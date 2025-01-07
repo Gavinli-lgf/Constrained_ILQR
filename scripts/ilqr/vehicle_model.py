@@ -1,3 +1,4 @@
+from matplotlib.pylab import f
 import numpy as np
 import pdb
 
@@ -40,6 +41,11 @@ class Model:
                                state[3] + control[1]*self.Ts])  # wrap angles between 0 and 2*pi - Gave me error
         return next_state
 
+    """
+    输入: noimnal trajectory信息"速度,朝向,加速度"(不包含初始状态):velocity_val(1,40), theta(1,40), acceleration_val(1,40);
+    输出: A(4,4,40): 状态转移矩阵A
+    注: 公式参照论文中的式(17)和(18)
+    """
     def get_A_matrix(self, velocity_vals, theta, acceleration_vals):
         """
         Returns the linearized 'A' matrix of the ego vehicle 
@@ -47,17 +53,24 @@ class Model:
         """
         v = velocity_vals
         v_dot = acceleration_vals
+        # A表面上看是一个4*4的矩阵,但是矩阵中的每个元素,实际上都是一个1*40子矩阵
         A = np.array([[self.o, self.z, cos(theta)*self.Ts, -(v*self.Ts + (v_dot*self.Ts**2)/2)*sin(theta)],
                       [self.z, self.o, sin(theta)*self.Ts,  (v*self.Ts + (v_dot*self.Ts**2)/2)*cos(theta)],
                       [self.z, self.z,             self.o,                                         self.z],
                       [self.z, self.z,             self.z,                                         self.o]])
         return A
 
+    """
+    输入: noimnal trajectory信息"朝向"(不包含初始状态):theta(1,40)
+    输出: B(4,2,40): 控制矩阵B
+    注: 公式参照论文中的式(17)和(18)
+    """
     def get_B_matrix(self, theta):
         """
         Returns the linearized 'B' matrix of the ego vehicle 
         model for all states in backward pass. 
         """
+        # B表面上看是一个4*2的矩阵,但是矩阵中的每个元素,实际上都是一个1*40子矩阵
         B = np.array([[self.Ts**2*cos(theta)/2,         self.z],
                       [self.Ts**2*sin(theta)/2,         self.z],
                       [         self.Ts*self.o,         self.z],

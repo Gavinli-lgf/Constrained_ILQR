@@ -9,6 +9,12 @@ class Obstacle:
         self.car_width = bb[1]
         self.track_id = track_id
 
+    """
+	输入:npc_traj:npc在控制域horizon内的状态[:, i:i+self.args.horizon]; i:当前时刻在horizon内的序号; 
+        ego_state:自车nominal trajectory在i时刻的状态
+    输出: b_dot_obs, b_ddot_obs: 代价函数l在i点对npc的一阶和二阶偏导
+    (npc障碍物的约束,通过barrier function加入代价函数中.分别对npc的barrier function计算一,二阶导)
+	"""
     def get_obstacle_cost_derivatives(self, npc_traj, i, ego_state):
 
         a = self.car_length + np.abs(npc_traj[2, i]*math.cos(npc_traj[3, i]))*self.args.t_safe + self.args.s_safe_a + self.args.ego_rad

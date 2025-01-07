@@ -23,7 +23,14 @@ class Constraints:
 		for i in range(self.number_of_npc):
 			self.obs_constraints[i] = Obstacle(args, i, obstacle_bb)
 
-	# TODO(lgf):待推导
+	"""
+	输入:state:自车nominal trajectory(不包含初始状态),大小(4,40); poly_coeffs:局部规划拟合多项式的系数;
+		x_local_plan:局部参考路径的x坐标;  npc_traj:npc在控制域horizon内的状态[:, i:i+self.args.horizon];
+    输出: l_x(4,40), l_xx(4,4,40): 代价函数l对x的一阶和二阶偏导
+	功能: 求nominal trajectory上每一点在x_local_plan上的最近点,从而得到δx_k,再代入代价函数l的一,二阶偏导中求得l_x_i, l_xx_i;
+		 同理可求得每个npc对应的barrier function在代价函数中的一,二阶导b_dot_obs, b_ddot_obs;
+		 最后将l_x_i, l_xx_i, b_dot_obs, b_ddot_obs累加得到总的l_x, l_xx.
+	"""
 	def get_state_cost_derivatives(self, state, poly_coeffs, x_local_plan, npc_traj):
 		"""
 		Returns the first order and second order derivative of the value function wrt state
@@ -44,6 +51,7 @@ class Constraints:
 
 			# Obstacle derivative
 			for j in range(self.number_of_npc):
+    			# npc障碍物的约束,通过barrier function加入代价函数中.分别对npc的barrier function计算一,二阶导.再分别累加到l_x_i, l_xx_i上得到总的l_x, l_xx
 				# pdb.set_trace()
 				b_dot_obs, b_ddot_obs = self.obs_constraints[j].get_obstacle_cost_derivatives(npc_traj, i, state[:, i])
 				# b_dot_obs = np.array([0, 0, 0, 0])
@@ -62,7 +70,11 @@ class Constraints:
 		# pdb.set_trace()
 		return l_x, l_xx
 
-	# TODO(lgf):待推导
+	"""
+	输入:state:自车nominal trajectory(不包含初始状态),大小(4,40);  control:自车的nominal输入(2,40); (horizon=40)
+	输出: l_u(2,40), l_uu(2,2,40): 代价函数l对u的一阶和二阶偏导
+	功能: 
+	"""
 	def get_control_cost_derivatives(self, state, control):
 		"""
 		Returns the control quadratic (R matrix) and linear cost term (r vector) for the trajectory
@@ -113,7 +125,8 @@ class Constraints:
 	"""
 	输入:state:自车nominal trajectory(不包含初始状态),大小(4,40);  control:自车的nominal输入(2,40); (horizon=40)
         poly_coeffs:局部规划拟合多项式的系数;  x_local_plan:局部参考路径的x坐标;  npc_traj:npc在控制域horizon内的状态[:, i:i+self.args.horizon];
-    输出: l_x, l_xx, l_u, l_uu, l_ux: 代价函数l对x, u的一阶和二阶偏导
+    输出: l_x(4,40), l_xx(4,4,40), l_u(2,40), l_uu(2,2,40), l_ux(2,4,40): 代价函数l对x, u的一阶和二阶偏导
+	功能: 从包含各个约束的barrier function后的代价函数中求得l_x, l_xx, l_u, l_uu, l_ux
 	"""
 	def get_cost_derivatives(self, state, control, poly_coeffs, x_local_plan, npc_traj):
 		"""
@@ -123,6 +136,7 @@ class Constraints:
 		self.state = state
 		# pdb.set_trace()
 		l_u, l_uu = self.get_control_cost_derivatives(state, control)
+		# 计算包含各个约束的barrier function后的代价函数在每个nominal trajectory点处的一,二阶导数l_x(4,40), l_xx(4,4,40)
 		l_x, l_xx = self.get_state_cost_derivatives(state, poly_coeffs, x_local_plan, npc_traj)
 		l_ux = np.zeros((self.args.num_ctrls, self.args.num_states, self.args.horizon))
 		# l = c_state + c_ctrl
