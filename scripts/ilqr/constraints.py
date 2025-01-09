@@ -73,7 +73,7 @@ class Constraints:
 	"""
 	输入:state:自车nominal trajectory(不包含初始状态),大小(4,40);  control:自车的nominal输入(2,40); (horizon=40)
 	输出: l_u(2,40), l_uu(2,2,40): 代价函数l对u的一阶和二阶偏导
-	功能: 
+	功能: 包含指数型barrier function的cost对控制量的一,二阶导包含5部分:加速度上限,加速度下限,转向角速度上限,转向角速度下限,控制成本的一阶导数.
 	"""
 	def get_control_cost_derivatives(self, state, control):
 		"""
@@ -86,24 +86,25 @@ class Constraints:
 		l_uu = np.zeros((self.args.num_ctrls, self.args.num_ctrls, self.args.horizon))
 		# c_ctrl = 0
 		for i in range(self.args.horizon):
-			# Acceleration Barrier Max
+			# Acceleration Barrier Max(约束a < self.args.acc_limits[1]; 此时不等式约束函数对状态变量的一阶导为P1，以内约束函数中只有a,没有yaw_rate)
 			c = (np.matmul(control[:, i].T, P1) - self.args.acc_limits[1])
 			b_1, b_dot_1, b_ddot_1 = self.barrier_function(self.args.q1_acc, self.args.q2_acc, c, P1)
 
-			# Acceleration Barrier Min
+			# Acceleration Barrier Min(约束self.args.acc_limits[0] < a)(同上)
 			c = (self.args.acc_limits[0] - np.matmul(control[:, i].T, P1))
 			b_2, b_dot_2, b_ddot_2 = self.barrier_function(self.args.q1_acc, self.args.q2_acc, c, -P1)
 
 			velocity = state[2, i]
 
-			# Yawrate Barrier Max
+			# Yawrate Barrier Max(同上)
 			c = (np.matmul(control[:, i].T, P2) - velocity*math.tan(self.args.steer_angle_limits[1])/self.args.wheelbase)
 			b_3, b_dot_3, b_ddot_3 = self.barrier_function(self.args.q1_yawrate, self.args.q2_yawrate, c, P2)
 
-			# Yawrate Barrier Min
+			# Yawrate Barrier Min(同上)
 			c = (velocity*math.tan(self.args.steer_angle_limits[0])/self.args.wheelbase - np.matmul(control[:, i].T, P2))
 			b_4, b_dot_4, b_ddot_4 = self.barrier_function(self.args.q1_yawrate, self.args.q2_yawrate, c, -P2)
 
+			# 包含指数型barrier function的cost对控制量的一,二阶导包含5部分:加速度上限,加速度下限,转向角速度上限,转向角速度下限,控制成本的一阶导数.
 			l_u_i = b_dot_1 + b_dot_2 + b_dot_3 + b_dot_4 + (2*control[:, i].T @ self.control_cost).reshape(-1, 1)
 			l_uu_i = b_ddot_1 + b_ddot_2 + b_ddot_3 + b_ddot_4 + 2*self.control_cost
 
@@ -115,6 +116,10 @@ class Constraints:
 
 		return l_u, l_uu
 
+	"""
+	输入: q1,q2:指数型barrier function的参数q1, q2;  c:不等式约束函数f_k(形如Ax+B<0)在k时刻的值;  c_dot:不等式约束函数的一阶导数在k时刻的值.
+	输出: k时刻barrier function的值,一阶导,二阶导:b, b_dot, b_ddot.
+	"""
 	def barrier_function(self, q1, q2, c, c_dot):
 		b = q1*np.exp(q2*c)
 		b_dot = q1*q2*np.exp(q2*c)*c_dot
@@ -134,7 +139,7 @@ class Constraints:
 		This is the main function which calls all the other functions 
 		"""
 		self.state = state
-		# pdb.set_trace()
+		# pdb.set_trace()(对于控制约束,使用指数barrier function)
 		l_u, l_uu = self.get_control_cost_derivatives(state, control)
 		# 计算包含各个约束的barrier function后的代价函数在每个nominal trajectory点处的一,二阶导数l_x(4,40), l_xx(4,4,40)
 		l_x, l_xx = self.get_state_cost_derivatives(state, poly_coeffs, x_local_plan, npc_traj)
