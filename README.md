@@ -11,8 +11,9 @@ deployed in an autonomous driving simulator, which will also
 be used for validation of the project. <br/>
 
 Here are the results in a self-developed Python Simulator <br/>
+Run cmd:python3 scripts/python_simulator/python_simulator.py <br/>
 Two different behaviors are shown depending on the cost of deviating from the reference
-trajectory and deviating from the desired speed. <br/>
+trajectory and deviating from the desired speed. Arguments of those two behaviors are w_pos and w_vel in file arguments.py <br/>
 In this first GIF, there is a high cost for deviating from the reference trajectory and hence the ego-vehicle(in red)
 stays close to the reference path (red line) and does not overtake the NPC vehicle (in green)
 ![](https://media.giphy.com/media/S3ar1cwuQ5V59uyt65/giphy.gif) <br/>

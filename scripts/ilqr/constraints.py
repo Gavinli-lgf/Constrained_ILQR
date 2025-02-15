@@ -179,16 +179,6 @@ class Constraints:
 		
 		return local_plan[min_i, :]
 
-
-
-
-
-
-
-
-
-
-
 	# def get_acceleration_cost(self): 
 	# 	return np.matmul(np.matmul(self.args.w_acc*self.control.T*np.array([[1,0],[0,0]]))*self.control)
 
