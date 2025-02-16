@@ -25,7 +25,7 @@ class Model:
         self.z = np.zeros((self.N))
         self.o = np.ones((self.N))
         
-    # 使用车辆运动学方程，根据当前状态 state 和控制输入 control ，计算下一个状态 next_state
+    # 状态转移方程：使用车辆运动学方程，根据当前状态 state 和控制输入 control ，计算下一个状态 next_state
     def forward_simulate(self, state, control):
         """
         Find the next state of the vehicle given the current state and control input
@@ -42,6 +42,7 @@ class Model:
         return next_state
 
     """
+    功能：求状态转移方程一阶泰勒展开后X_k+1 = AX_k + BU_k中的A，即df/dx
     输入: noimnal trajectory信息"速度,朝向,加速度"(不包含初始状态):velocity_val(1,40), theta(1,40), acceleration_val(1,40);
     输出: A(4,4,40): 状态转移矩阵A
     注: 公式参照论文中的式(17)和(18)
@@ -61,6 +62,7 @@ class Model:
         return A
 
     """
+    功能：求状态转移方程一阶泰勒展开后X_k+1 = AX_k + BU_k中的B，即df/du
     输入: noimnal trajectory信息"朝向"(不包含初始状态):theta(1,40)
     输出: B(4,2,40): 控制矩阵B
     注: 公式参照论文中的式(17)和(18)

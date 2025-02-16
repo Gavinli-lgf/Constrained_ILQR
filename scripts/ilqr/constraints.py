@@ -71,7 +71,7 @@ class Constraints:
 		return l_x, l_xx
 
 	"""
-	输入:state:自车nominal trajectory(不包含初始状态),大小(4,40);  control:自车的nominal输入(2,40); (horizon=40)
+	输入: state:自车nominal trajectory(不包含初始状态),大小(4,40);  control:自车的nominal输入(2,40); (horizon=40)
 	输出: l_u(2,40), l_uu(2,2,40): 代价函数l对u的一阶和二阶偏导
 	功能: 包含指数型barrier function的cost对控制量的一,二阶导包含5部分:加速度上限,加速度下限,转向角速度上限,转向角速度下限,控制成本的一阶导数.
 	"""
@@ -119,6 +119,7 @@ class Constraints:
 	"""
 	输入: q1,q2:指数型barrier function的参数q1, q2;  c:不等式约束函数f_k(形如Ax+B<0)在k时刻的值;  c_dot:不等式约束函数的一阶导数在k时刻的值.
 	输出: k时刻barrier function的值,一阶导,二阶导:b, b_dot, b_ddot.
+    (注意：见论文，指数形式的barrier function存在2个缺点：调参难；不能完全确保硬约束。因此使用log形式-1/t*log(-g)。)
 	"""
 	def barrier_function(self, q1, q2, c, c_dot):
 		b = q1*np.exp(q2*c)
@@ -149,6 +150,7 @@ class Constraints:
 		return l_x, l_xx, l_u, l_uu, l_ux
 
 	"""
+	功能: 代价函数l对状态、控制、barrier function等所有一、二阶偏导的综合(包含上述、求出的结果)
 	输入: state(4,41):forward推导horizon范围内状态序列;  control_seq(2,40):forward推导horizon范围内控制序列;  poly_coeffs:局部参考轨迹拟合多项式的系数; 
          x_local_plan:局部参考轨迹的x坐标;  npc_traj:npc在控制域horizon内的状态[:, i:i+self.args.horizon](默认horizon=40)
     输出: J(标量):state 和 control_seq 与局部参考轨迹(poly_coeffs,x_local_plan)的代价.
@@ -169,6 +171,8 @@ class Constraints:
 			J = J + c_state + c_ctrl
 		return J
 
+	# 对应论文中与参考线偏差代价的部分说明：一般来说我们的最容易想到的做法就是待优化点和reference的点之间施加一个距离上的惩罚，容易导致待优化点被拉伸。
+	#	因此需要用点到曲线距离的方式来表达这个惩罚。
 	def find_closest_point(self, state, coeffs, x_local_plan):
 		new_x = np.linspace(x_local_plan[0], x_local_plan[-1], num=10*self.args.number_of_local_wpts)
 		new_y = np.polyval(np.poly1d(coeffs), new_x)

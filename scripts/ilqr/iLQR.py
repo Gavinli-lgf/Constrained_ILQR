@@ -110,7 +110,6 @@ class iLQR():
             Q_uu_evals += lamb
             Q_uu_inv = np.dot(Q_uu_evecs,np.dot(np.diag(1.0/Q_uu_evals), Q_uu_evecs.T))
 
-    
             # Calculate feedforward and feedback terms(计算前馈项 k 和反馈增益 K)
             k[:,i] = -Q_uu_inv @ Q_u
             K[:,:,i] = -Q_uu_inv @ Q_ux

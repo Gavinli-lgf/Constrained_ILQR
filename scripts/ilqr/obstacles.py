@@ -10,10 +10,11 @@ class Obstacle:
         self.track_id = track_id
 
     """
-	输入:npc_traj:npc在控制域horizon内的状态[:, i:i+self.args.horizon]; i:当前时刻在horizon内的序号; 
+    功能：将不等式硬约束(npc障碍物,状态量范围,控制量范围等),通过barrier function转换为软约束加入代价函数中.分别求一,二阶导。
+	输入：npc_traj:npc在控制域horizon内的状态[:, i:i+self.args.horizon]; i:当前时刻在horizon内的序号; 
         ego_state:自车nominal trajectory在i时刻的状态
     输出: b_dot_obs, b_ddot_obs: 代价函数l在i点对npc的一阶和二阶偏导
-    (npc障碍物的约束,通过barrier function加入代价函数中.分别对npc的barrier function计算一,二阶导)
+    (注意：见论文，指数形式的barrier function存在2个缺点：调参难；不能完全确保硬约束。因此使用log形式-1/t*log(-g)。)
 	"""
     def get_obstacle_cost_derivatives(self, npc_traj, i, ego_state):
 
@@ -52,6 +53,7 @@ class Obstacle:
         # 将自车前,后部在NPC barrier function中的一阶导b_dot, 二阶导b_ddot累加,得到总的NPC约束代价函数
         return b_dot_f + b_dot_r, b_ddot_f + b_ddot_r
 
+    # 此函数未使用
     def get_obstacle_cost(self, npc_traj, i, ego_state_nominal, ego_state):
         a = self.car_length + np.abs(npc_traj[2, i]*math.cos(npc_traj[3, i]))*self.args.t_safe + self.args.s_safe_a + self.args.ego_rad
         b = self.car_width + np.abs(npc_traj[2, i]*math.sin(npc_traj[3, i]))*self.args.t_safe + self.args.s_safe_b + self.args.ego_rad
@@ -99,6 +101,7 @@ class Obstacle:
     """
     输入: q1,q2: 指数型barrier function的两个参数; c: 原始的不等式约束c<0; c_dot: 不等式约束函数的一阶导数
     输出: barrier function的值b, 一阶导b_dot, 二阶导b_ddot
+    (注意：见论文，指数形式的barrier function存在2个缺点：调参难；不能完全确保硬约束。因此使用log形式-1/t*log(-g)。)
     """
     def barrier_function(self, q1, q2, c, c_dot):
         b = q1*np.exp(q2*c)
